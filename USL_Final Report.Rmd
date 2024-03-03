@@ -1,0 +1,141 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r 1}
+# # Required Packages
+
+
+##
+# 0.1. Fetch Single Stock/Index Data
+getSymbols(Symbols = 'UNITDSPR.BO', 
+           src = 'yahoo', 
+           from = as.Date('2018-01-01'), 
+           to = as.Date('2023-12-31'),
+           periodicity = 'daily')
+
+stock_price = na.omit(UNITDSPR.BO$UNITDSPR.BO.Adjusted) # Adjusted Closing Price
+class(stock_price) # xts (Time-Series) Object
+
+stock_ret = na.omit(diff(log(stock_price))) # Stock Returns
+plot(stock_ret)
+```
+
+Objective: To analyze the daily returns of USL stock from 2018-01-01 to 2023-12-31. 
+Analysis: Extracted the adjusted closing prices of USL stock, calculated daily returns, and visualized them. Result: The TTC_return' plot displays the daily returns of USL stock over the specified period. 
+Implication: The plot indicates the volatility and direction of daily returns for USL stock during the given timeframe. Observations from the plot can help investors understand the historical performance and risk associated with USL stock.
+
+
+```{r}
+
+# Augmented Dickey-Fuller (ADF) Test for Stationarity with Stock Data
+
+#'12A'adf_test_stk_price = adf.test(stock_price); adf_test_stk_price  # Inference : Stock price Time-Series is Non-Stationary
+
+adf_test_stk_ret = adf.test(stock_ret); adf_test_stk_ret # Inference : Stock Difference Time-Series is Stationary
+```
+Objective: To conduct an Augmented Dickey-Fuller (ADF) test for stationarity on the daily returns of USL stock. Analysis: Performed the ADF test using the 'adf.test' function and obtained results. 
+Result: The Augmented Dickey-Fuller test for stationarity on USL daily returns yields the following results: - Dickey-Fuller statistic: -10.953 -Lag order: 11 - p-value: 0.01 - 
+Alternative hypothesis: Stationary
+Implication: The ADF test suggests that the daily returns of USL stock are likely stationary. The small p-value (0.01) indicates evidence against the null hypothesis of non-stationarity. Therefore, we have reason to believe that the USL stock returns exhibit stationarity, which is important for certain time series analyses
+
+
+```{r}
+# Ljung-Box Test for Autocorrelation - Stock Data
+# ***********************************************
+
+lb_test_stk_ret = Box.test(stock_ret); lb_test_stk_ret # Inference : Stock Difference (Stationary) Time-Series is Autocorrelated
+
+# Autocorrelation Function (ACF) | Partial Autocorrelation Function (PACF)
+# *****************************************************************************
+
+# '12A' acf(stock_price) # ACF of Stock Price
+# '12A' pacf(stock_price) # PACF of Stock Price
+
+acf(stock_ret) # ACF of Stock Return (Stationary) Series
+pacf(stock_ret) # PACF of Stock Return (Stationary) Series
+```
+```{r}
+# Auto ARIMA
+arma_pq_stk_ret = auto.arima(stock_ret); arma_pq_stk_ret
+arma_pq_stk = auto.arima(stock_price); arma_pq_stk
+```
+Analysis:
+
+Objective: To perform a Ljung-Box test for autocorrelation on the daily returns of USL stock. 
+Analysis: Conducted the Ljung-Box test using the 'Box.test' function and obtained results. Result: The Ljung-Box test for autocorrelation on ITC daily returns yields the following results: - X-squared statistic:  0.066997, - Degrees of freedom: 1- p-value= 0.7958
+
+Implication: The Ljung-Box test indicates significant autocorrelation in the USL stock daily returns. The small p- value suggests evidence against the null hypothesis of no autocorrelation.
+
+Action: Given the presence of autocorrelation, it may be advisable to consider an autoARIMA model for time series forecasting. AutoARIMA can help in automatically selecting an appropriate ARIMA model with differencing to account for the observed autocorrelation.
+
+Analysis:
+
+
+Objective: To perform autoARIMA modeling on the daily returns ('USL_return') and adjusted closing prices ('USL_price') of USL stock. Analysis: Used the 'auto.arima' function to automatically select the ARIMA model for both returns and prices. Results:
+
+For Daily Returns: The autoARIMA model suggests an ARIMA(0,0,0) with zero mean. sigma^2 = 0.0003921:  log likelihood = 3704.44
+AIC=-7406.88   AICc=-7406.87   BIC=-7401.58
+
+For Adjusted Closing Prices: The autoARIMA model suggests an ARIMA(0,1,0) with a non-zero mean. Coefficients: - sigma^2 = 185.1:  log likelihood = -5963.44
+AIC=11928.88   AICc=11928.88   BIC=11934.18
+
+Implication: The autoARIMA models provide a statistical framework to capture the underlying patterns in both daily returns and adjusted closing prices of USL stock. These models can be used for forecasting future values, and the AIC, AICc, and BIC values help in model comparison.
+
+Note: Interpretation of the coefficients and model selection details may require further analysis based on the specific context of the financial data
+
+```{r}
+# Test for Volatility Clustering or Heteroskedasticity: Box Test 
+stk_ret_sq = arma_pq_stk_ret$residuals^2 # Return Variance (Since Mean Returns is approx. 0)
+plot(stk_ret_sq)
+stk_ret_sq_box_test = Box.test(stk_ret_sq, lag = 10) # H0: Return Variance Series is Not Serially Correlated
+stk_ret_sq_box_test # Inference : Return Variance Series is Heteroskedastic (Has Volatility Clustering)
+
+# Test for Volatility Clustering or Heteroskedasticity: ARCH Test
+stk_ret_arch_test = ArchTest(arma_pq_stk_ret$residuals, lags = 10) # H0: No ARCH Effects
+stk_ret_arch_test # Inference : Return Series is Heteroskedastic (Has Volatility Clustering)
+```
+Analysis: Objective: To test for volatility clustering or heteroskedasticity in the residuals of the ARIMA(5, 0, 4) model. Analysis: Conducted Box test and ARCH test on the squared residuals to assess the presence of
+volatility clustering. 
+
+Results:
+1. Box Test for Volatility Clustering:
+
+• X-squared = 112.77, df = 10, p-value < 2.2e-16
+Inference: The Box test indicates significant evidence against the null hypothesis, suggesting that the return variance series exhibits volatility clustering or heteroskedasticity.
+
+2. ARCH Test for Volatility Clustering:
+Chi-squared = 88.832, df = 10, p-value = 9.125e-15
+
+Inference: The ARCH test also provides strong evidence against the null hypothesis supporting the presence of ARCH effects in the return series. This implies that the returns have volatility clustering.
+
+Implication: The results from both tests suggest that the residuals of the ARIMA(5, 0, 4) model exhibit volatility clustering or heteroskedasticity, Understanding and accounting for this pattern in volatility is essential for risk management and forecasting.
+
+Note: Interpretation may vary based on the specific context of the financial data and the assumptions underlying the time series analysis.
+
+
+
+
+
+```{r}
+# GARCH Forecast
+stk_ret_garch_forecast1 = ugarchforecast(stk_ret_garch, n.ahead = 50); stk_ret_garch_forecast1
+plot(stk_ret_garch_forecast1)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
